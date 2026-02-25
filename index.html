@@ -1,0 +1,677 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Recommender Systems — Journal Feed (JCR core)</title>
+  <style>
+    :root{
+      --bg:#0b1020; --panel:#0f1730; --card:#111a33; --muted:#a9b3d1; --text:#eef2ff;
+      --chip:#1a2550; --accent:#7aa2ff; --ok:#3cffaa; --warn:#ffd24d; --err:#ffb4b4;
+      --border:rgba(255,255,255,.09);
+    }
+    *{box-sizing:border-box}
+    body{margin:0;font-family:ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,Arial;background:var(--bg);color:var(--text)}
+    a{color:var(--accent);text-decoration:none}
+    a:hover{text-decoration:underline}
+    header{padding:18px 16px 10px;border-bottom:1px solid var(--border);background:linear-gradient(180deg, rgba(122,162,255,.06), transparent)}
+    .wrap{max-width:1280px;margin:0 auto}
+    h1{margin:0 0 6px;font-size:20px;font-weight:780;letter-spacing:.2px}
+    .sub{color:var(--muted);font-size:13px;line-height:1.35}
+
+    .layout{display:grid;grid-template-columns: 330px 1fr;gap:14px;padding:14px 16px 38px}
+    @media(max-width: 980px){ .layout{grid-template-columns:1fr} }
+
+    .side{background:var(--panel);border:1px solid var(--border);border-radius:16px;padding:12px;position:sticky;top:12px;align-self:start}
+    @media(max-width: 980px){ .side{position:relative;top:auto} }
+
+    .sectionTitle{font-size:12px;color:var(--muted);margin:10px 0 8px;text-transform:uppercase;letter-spacing:.08em}
+    .controls{display:grid;grid-template-columns:1fr;gap:10px}
+    .control{background:rgba(0,0,0,.12);border:1px solid var(--border);border-radius:14px;padding:10px}
+    label{display:block;font-size:12px;color:var(--muted);margin-bottom:6px}
+    input,select{width:100%;border-radius:12px;border:1px solid rgba(255,255,255,.10);background:rgba(0,0,0,.18);color:var(--text);padding:9px 10px;font-size:13px;outline:none}
+    input::placeholder{color:rgba(238,242,255,.45)}
+    .row2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+    .tog{display:flex;gap:10px;flex-wrap:wrap}
+    .toggle{display:flex;align-items:center;gap:8px;background:rgba(0,0,0,.12);border:1px solid var(--border);border-radius:999px;padding:7px 10px;font-size:12.5px;color:var(--text)}
+    .toggle input{width:auto}
+    .btn{cursor:pointer;border:1px solid rgba(255,255,255,.14);background:rgba(122,162,255,.12);color:var(--text);padding:9px 10px;border-radius:12px;font-size:13px}
+    .btn:hover{background:rgba(122,162,255,.18)}
+
+    .counts{display:flex;flex-direction:column;gap:6px}
+    .pill{display:flex;justify-content:space-between;gap:10px;align-items:center;background:rgba(0,0,0,.12);border:1px solid var(--border);border-radius:12px;padding:8px 10px;font-size:12.5px;cursor:pointer}
+    .pill:hover{border-color:rgba(122,162,255,.35)}
+    .pill .k{color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+    .pill .v{color:var(--muted);font-variant-numeric:tabular-nums}
+    .pill.active{border-color:rgba(122,162,255,.55);background:rgba(122,162,255,.10)}
+
+    .main{min-width:0}
+    .meta{display:flex;justify-content:space-between;align-items:baseline;gap:12px;flex-wrap:wrap;color:var(--muted);font-size:13px;margin:4px 0 12px}
+    .status{color:var(--muted);font-size:12.5px;margin-top:8px}
+    .status.ok{color:rgba(60,255,170,.85)}
+    .status.err{color:var(--err)}
+
+    .block{margin:10px 0 16px}
+    .block h2{margin:0 0 10px;font-size:14px;font-weight:800;letter-spacing:.2px}
+    .list{display:flex;flex-direction:column;gap:10px}
+    .card{background:var(--card);border:1px solid var(--border);border-radius:16px;padding:12px 12px 10px}
+    .title{font-size:15px;font-weight:760;margin:0 0 6px;line-height:1.25}
+    .row{display:flex;flex-wrap:wrap;gap:8px 12px;color:var(--muted);font-size:12.5px;margin-bottom:8px}
+    .chips{display:flex;flex-wrap:wrap;gap:6px;margin-top:6px}
+    .chip{font-size:11.5px;color:var(--text);background:var(--chip);border:1px solid rgba(255,255,255,.08);padding:4px 8px;border-radius:999px}
+    .chip.oa{background:rgba(60,255,170,.10);border-color:rgba(60,255,170,.25)}
+    .chip.cites{background:rgba(255,210,77,.10);border-color:rgba(255,210,77,.25)}
+    details{margin-top:8px}
+    summary{cursor:pointer;color:var(--accent);font-size:12.5px}
+    .abs{color:var(--text);opacity:.92;font-size:13px;line-height:1.45;margin-top:8px}
+
+    .foot{margin-top:18px;color:var(--muted);font-size:12px;line-height:1.35}
+    code{background:rgba(255,255,255,.06);padding:2px 6px;border-radius:8px}
+  </style>
+</head>
+
+<body>
+<header>
+  <div class="wrap">
+    <h1>Recommender Systems — Journal Feed (JCR core)</h1>
+    <div class="sub">
+      Feed en vivo (OpenAlex) filtrando por revistas núcleo (ESWA, Information Sciences, DSS, KBS, TKDE, CSUR, IP&amp;M, EAAI, IEEE Access).
+      Secciones tipo “This week / This month / Earlier”, filtros por revista y tópicos.
+    </div>
+  </div>
+</header>
+
+<div class="wrap layout">
+  <aside class="side">
+    <div class="sectionTitle">Búsqueda &amp; filtros</div>
+
+    <div class="controls">
+      <div class="control">
+        <label for="q">Búsqueda (título/abstract)</label>
+        <input id="q" placeholder='Ej: "graph neural" | "sequential" | "explainable"' />
+      </div>
+
+      <div class="row2">
+        <div class="control">
+          <label for="days">Ventana temporal</label>
+          <select id="days">
+            <option value="90" selected>90 días</option>
+            <option value="180">180 días</option>
+            <option value="365">365 días</option>
+          </select>
+        </div>
+
+        <div class="control">
+          <label for="sort">Orden</label>
+          <select id="sort">
+            <option value="date_desc" selected>Fecha ↓</option>
+            <option value="cites_desc">Citas ↓</option>
+            <option value="date_asc">Fecha ↑</option>
+            <option value="title_asc">Título A–Z</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="tog">
+        <label class="toggle"><input type="checkbox" id="oaOnly" /> Open Access</label>
+        <label class="toggle"><input type="checkbox" id="showAbs" /> Abstracts</label>
+        <label class="toggle"><input type="checkbox" id="strictRS" checked /> RS “estricto”</label>
+      </div>
+
+      <button class="btn" id="reload">Actualizar</button>
+      <div class="status" id="status"></div>
+    </div>
+
+    <div class="sectionTitle">Revistas (click para filtrar)</div>
+    <div class="counts" id="journalCounts"></div>
+
+    <div class="sectionTitle">Tópicos (concepts)</div>
+    <div class="counts" id="topicCounts"></div>
+
+    <div class="foot">
+      Cache local: <code>localStorage</code> (por ventana temporal). Si cambias <code>days</code>, recarga.
+      Puedes editar la lista de revistas (ISSN) y el filtro RS en el propio archivo.
+    </div>
+  </aside>
+
+  <main class="main">
+    <div class="meta">
+      <div id="metaLeft">Cargando…</div>
+      <div id="metaRight"></div>
+    </div>
+
+    <div id="blocks"></div>
+  </main>
+</div>
+
+<script>
+/* -----------------------------
+   Configuración
+------------------------------ */
+const JOURNALS = [
+  { key: "ALL", name: "All journals", issn: null },
+  { key: "ESWA", name: "Expert Systems with Applications", issn: "0957-4174" },
+  { key: "IS",   name: "Information Sciences", issn: "0020-0255" },
+  { key: "DSS",  name: "Decision Support Systems", issn: "0167-9236" },
+  { key: "KBS",  name: "Knowledge-Based Systems", issn: "0950-7051" },
+  { key: "TKDE", name: "IEEE TKDE", issn: "1041-4347" },
+  { key: "CSUR", name: "ACM Computing Surveys", issn: "0360-0300" },
+  { key: "IPM",  name: "Information Processing & Management", issn: "0306-4573" },
+  { key: "EAAI", name: "Engineering Applications of Artificial Intelligence", issn: "0952-1976" },
+  { key: "ACCESS", name: "IEEE Access", issn: "2169-3536" }
+];
+
+// 1) Filtro RS por defecto (estricto): evita que entren papers fuera de RS aunque estén en esas revistas.
+const RS_REGEX_STRICT = /(recommender|recommendation|collaborative\s*filtering|content[-\s]*based|hybrid\s*recommender|session[-\s]*based|sequential\s*recommend|top[-\s]*n\s*recommend|ranking\s*model|CTR\s*prediction|click[-\s]*through|pairwise\s*ranking)/i;
+
+// 2) Filtro RS laxo (si desmarcas “RS estricto”)
+const RS_REGEX_LOOSE = /(recommender|recommendation|collaborative\s*filtering|content[-\s]*based|hybrid\s*recommender|ranking)/i;
+
+// Número de tópicos (concepts) a mostrar en sidebar
+const TOPIC_TOPK = 12;
+
+// Cuántos resultados por journal pedimos por página
+const PER_PAGE = 200;
+
+// Paginación (cap de seguridad para no alargar demasiado)
+const CURSOR_PAGES_CAP = 6;
+
+// Recomendación OpenAlex: incluir mailto (pon el tuyo)
+const MAILTO = "mailto=ramon@example.com";
+
+/* -----------------------------
+   Estado UI
+------------------------------ */
+const el = (id) => document.getElementById(id);
+
+const state = {
+  allWorks: [],
+  lastUpdated: null,
+  activeJournal: "ALL",
+  activeTopic: null, // display_name del concept (normalizado)
+};
+
+function setStatus(msg, cls="") {
+  const s = el("status");
+  s.textContent = msg;
+  s.className = "status " + cls;
+}
+
+function isoDate(d){
+  const pad = (n)=>String(n).padStart(2,"0");
+  return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;
+}
+
+function stripHtml(s){
+  if(!s) return "";
+  return s.replace(/<[^>]*>/g," ").replace(/\s+/g," ").trim();
+}
+
+function authorsToString(authorships){
+  if(!authorships?.length) return "Autores no disponibles";
+  const names = authorships.map(a=>a?.author?.display_name).filter(Boolean);
+  return names.slice(0,8).join(", ") + (names.length>8 ? " et al." : "");
+}
+
+function bestUrl(work){
+  // Prefer DOI (https://doi.org/...), else OpenAlex landing
+  if(work?.doi) return work.doi;
+  if(work?.id) return work.id;
+  return null;
+}
+
+function formatJournal(work){
+  return work?.primary_location?.source?.display_name
+    || work?.host_venue?.display_name
+    || "Revista no disponible";
+}
+
+function publicationDate(work){
+  return work?.publication_date || null;
+}
+
+function isOA(work){
+  return Boolean(work?.open_access?.is_oa);
+}
+
+function normalizeTopic(name){
+  return (name || "").trim().toLowerCase();
+}
+
+/* -----------------------------
+   OpenAlex fetch
+------------------------------ */
+async function fetchWorksForIssn(issn, fromDate, toDate){
+  const base = "https://api.openalex.org/works";
+  let cursor = "*";
+  let out = [];
+  let pages = 0;
+
+  while(pages < CURSOR_PAGES_CAP){
+    const url =
+      `${base}?filter=` +
+      `primary_location.source.issn:${encodeURIComponent(issn)},` +
+      `from_publication_date:${fromDate},to_publication_date:${toDate},` +
+      `type:journal-article` +
+      `&per-page=${PER_PAGE}` +
+      `&cursor=${encodeURIComponent(cursor)}` +
+      `&${MAILTO}`;
+
+    const r = await fetch(url);
+    if(!r.ok) throw new Error(`OpenAlex error ${r.status} for ISSN ${issn}`);
+    const j = await r.json();
+
+    const batch = (j.results || []);
+    out = out.concat(batch);
+
+    cursor = j?.meta?.next_cursor;
+    pages += 1;
+
+    if(!cursor) break;
+    if(batch.length === 0) break;
+  }
+  return out;
+}
+
+/* -----------------------------
+   Cache local (por ventana)
+------------------------------ */
+function cacheKey(days){
+  return `rs_feed_cache_v2_days_${days}`;
+}
+
+function loadCache(days){
+  try{
+    const raw = localStorage.getItem(cacheKey(days));
+    if(!raw) return null;
+    const obj = JSON.parse(raw);
+    if(!obj?.works || !obj?.savedAt) return null;
+
+    // Expira a las 6 horas
+    const ageMs = Date.now() - new Date(obj.savedAt).getTime();
+    if(ageMs > 6*60*60*1000) return null;
+
+    return obj;
+  }catch{ return null; }
+}
+
+function saveCache(days, works){
+  try{
+    localStorage.setItem(cacheKey(days), JSON.stringify({
+      savedAt: new Date().toISOString(),
+      works
+    }));
+  }catch{}
+}
+
+/* -----------------------------
+   Carga de datos (con cache)
+------------------------------ */
+async function loadData({force=false} = {}){
+  const days = parseInt(el("days").value, 10);
+
+  if(!force){
+    const c = loadCache(days);
+    if(c){
+      state.allWorks = c.works;
+      state.lastUpdated = new Date(c.savedAt);
+      setStatus(`OK (cache) — ${state.allWorks.length} artículos. Última actualización: ${state.lastUpdated.toLocaleString()}`, "ok");
+      renderAll();
+      return;
+    }
+  }
+
+  setStatus("Cargando desde OpenAlex…");
+  el("blocks").innerHTML = "";
+  el("metaLeft").textContent = "Cargando…";
+  el("metaRight").textContent = "";
+
+  const to = new Date();
+  const from = new Date();
+  from.setDate(to.getDate() - days);
+
+  const fromDate = isoDate(from);
+  const toDate = isoDate(to);
+
+  const journalsToQuery = JOURNALS.filter(j => j.issn);
+
+  const results = [];
+  const seen = new Set();
+
+  for(const j of journalsToQuery){
+    setStatus(`Consultando: ${j.name}…`);
+    const works = await fetchWorksForIssn(j.issn, fromDate, toDate);
+    for(const w of works){
+      const key = (w.doi || w.id || `${w.title||""}|${w.publication_date||""}`);
+      if(!seen.has(key)){
+        seen.add(key);
+        results.push(w);
+      }
+    }
+  }
+
+  state.allWorks = results;
+  state.lastUpdated = new Date();
+
+  saveCache(days, results);
+
+  setStatus(`OK — ${results.length} artículos. Última actualización: ${state.lastUpdated.toLocaleString()}`, "ok");
+  renderAll();
+}
+
+/* -----------------------------
+   Filtrado + ordenación + secciones
+------------------------------ */
+function passesRSFilter(work){
+  const strict = el("strictRS").checked;
+  const re = strict ? RS_REGEX_STRICT : RS_REGEX_LOOSE;
+
+  const title = work?.title || "";
+  const abs = stripHtml(work?.abstract || "");
+  return re.test(`${title} ${abs}`);
+}
+
+function workTopics(work){
+  // OpenAlex: work.concepts[] con display_name y score
+  const concepts = work?.concepts || [];
+  // Nos quedamos con conceptos “útiles” (no meta-genéricos): el usuario puede ajustar a mano
+  return concepts
+    .filter(c => c?.display_name && typeof c?.score === "number")
+    .sort((a,b)=> (b.score||0)-(a.score||0))
+    .slice(0, 6)
+    .map(c => c.display_name);
+}
+
+function applyFilters(works){
+  const q = (el("q").value || "").trim();
+  const oaOnly = el("oaOnly").checked;
+
+  const topicNorm = state.activeTopic ? normalizeTopic(state.activeTopic) : null;
+  const journalKey = state.activeJournal;
+
+  return works.filter(w => {
+    if(!passesRSFilter(w)) return false;
+
+    if(oaOnly && !isOA(w)) return false;
+
+    if(journalKey && journalKey !== "ALL"){
+      const sel = JOURNALS.find(x => x.key === journalKey);
+      const issn = sel?.issn;
+      // Para robustez: chequeo por primary_location.source.issn_l (lista de issn)
+      const issnList = w?.primary_location?.source?.issn_l || w?.host_venue?.issn_l || [];
+      if(issn && !issnList.includes(issn)) return false;
+    }
+
+    if(topicNorm){
+      const topics = workTopics(w).map(normalizeTopic);
+      if(!topics.includes(topicNorm)) return false;
+    }
+
+    if(q){
+      const hay = `${w?.title||""} ${stripHtml(w?.abstract||"")}`;
+      try{
+        const re = new RegExp(q, "i");
+        if(!re.test(hay)) return false;
+      }catch{
+        // Si la regex del usuario falla, hacemos contains simple
+        if(!hay.toLowerCase().includes(q.toLowerCase())) return false;
+      }
+    }
+
+    return true;
+  });
+}
+
+function applySort(works){
+  const mode = el("sort").value;
+  const arr = works.slice();
+
+  const dateVal = (w) => {
+    const d = publicationDate(w);
+    if(!d) return 0;
+    return new Date(d).getTime();
+  };
+
+  if(mode === "date_desc") arr.sort((a,b)=> dateVal(b)-dateVal(a));
+  if(mode === "date_asc")  arr.sort((a,b)=> dateVal(a)-dateVal(b));
+  if(mode === "cites_desc") arr.sort((a,b)=> (b.cited_by_count||0)-(a.cited_by_count||0));
+  if(mode === "title_asc") arr.sort((a,b)=> (a.title||"").localeCompare(b.title||"", "es"));
+
+  return arr;
+}
+
+function splitSections(works){
+  const now = new Date();
+  const t7 = new Date(now); t7.setDate(now.getDate()-7);
+  const t30 = new Date(now); t30.setDate(now.getDate()-30);
+
+  const week = [];
+  const month = [];
+  const earlier = [];
+
+  for(const w of works){
+    const d = publicationDate(w);
+    const dt = d ? new Date(d) : null;
+    if(!dt){ earlier.push(w); continue; }
+    if(dt >= t7) week.push(w);
+    else if(dt >= t30) month.push(w);
+    else earlier.push(w);
+  }
+  return [
+    { title: "This week", items: week },
+    { title: "This month", items: month },
+    { title: "Earlier", items: earlier }
+  ];
+}
+
+/* -----------------------------
+   Sidebar counts (journals + topics)
+------------------------------ */
+function computeCounts(works){
+  const journalCounts = new Map();
+  const topicCounts = new Map();
+
+  for(const w of works){
+    // journal
+    const issnList = w?.primary_location?.source?.issn_l || w?.host_venue?.issn_l || [];
+    for(const j of JOURNALS){
+      if(!j.issn) continue;
+      if(issnList.includes(j.issn)){
+        journalCounts.set(j.key, (journalCounts.get(j.key)||0)+1);
+      }
+    }
+
+    // topics
+    for(const t of workTopics(w)){
+      const k = normalizeTopic(t);
+      topicCounts.set(k, { name: t, n: (topicCounts.get(k)?.n||0) + 1 });
+    }
+  }
+
+  // total
+  journalCounts.set("ALL", works.length);
+
+  const topTopics = Array.from(topicCounts.values())
+    .sort((a,b)=> b.n-a.n)
+    .slice(0, TOPIC_TOPK);
+
+  return { journalCounts, topTopics };
+}
+
+function renderSidebarCounts(filteredForCounts){
+  const { journalCounts, topTopics } = computeCounts(filteredForCounts);
+
+  // Journals
+  const jc = el("journalCounts");
+  jc.innerHTML = "";
+  for(const j of JOURNALS){
+    const n = journalCounts.get(j.key) || 0;
+    const div = document.createElement("div");
+    div.className = "pill" + (state.activeJournal === j.key ? " active" : "");
+    div.title = j.name;
+    div.innerHTML = `<div class="k">${j.name}</div><div class="v">${n}</div>`;
+    div.addEventListener("click", ()=>{
+      state.activeJournal = j.key;
+      // al cambiar revista, mantenemos tópico si sigue habiendo resultados (si no, lo resetearás visualmente al ver 0)
+      renderAll();
+    });
+    jc.appendChild(div);
+  }
+
+  // Topics
+  const tc = el("topicCounts");
+  tc.innerHTML = "";
+  const allTopicsPill = document.createElement("div");
+  allTopicsPill.className = "pill" + (!state.activeTopic ? " active" : "");
+  allTopicsPill.innerHTML = `<div class="k">All topics</div><div class="v">—</div>`;
+  allTopicsPill.addEventListener("click", ()=>{ state.activeTopic = null; renderAll(); });
+  tc.appendChild(allTopicsPill);
+
+  for(const t of topTopics){
+    const div = document.createElement("div");
+    div.className = "pill" + (normalizeTopic(state.activeTopic) === normalizeTopic(t.name) ? " active" : "");
+    div.title = t.name;
+    div.innerHTML = `<div class="k">${t.name}</div><div class="v">${t.n}</div>`;
+    div.addEventListener("click", ()=>{
+      state.activeTopic = t.name;
+      renderAll();
+    });
+    tc.appendChild(div);
+  }
+}
+
+/* -----------------------------
+   Render principal (bloques + cards)
+------------------------------ */
+function renderBlocks(works){
+  const showAbs = el("showAbs").checked;
+  const blocks = el("blocks");
+  blocks.innerHTML = "";
+
+  const sections = splitSections(works);
+
+  for(const sec of sections){
+    const block = document.createElement("div");
+    block.className = "block";
+    block.innerHTML = `<h2>${sec.title} <span style="color:var(--muted);font-weight:600">(${sec.items.length})</span></h2>`;
+    const list = document.createElement("div");
+    list.className = "list";
+
+    for(const w of sec.items){
+      const card = document.createElement("div");
+      card.className = "card";
+
+      const url = bestUrl(w);
+      const title = w?.title || "Título no disponible";
+      const journal = formatJournal(w);
+      const date = publicationDate(w) || "Fecha no disponible";
+      const authors = authorsToString(w?.authorships);
+      const cites = w?.cited_by_count ?? 0;
+      const oa = isOA(w);
+      const abs = stripHtml(w?.abstract || "");
+      const topics = workTopics(w);
+
+      card.innerHTML = `
+        <div class="title">${url ? `<a href="${url}" target="_blank" rel="noopener">${title}</a>` : title}</div>
+        <div class="row">
+          <span><strong>${journal}</strong></span>
+          <span>${date}</span>
+          <span>${authors}</span>
+        </div>
+        <div class="chips">
+          ${oa ? `<span class="chip oa">Open Access</span>` : ``}
+          <span class="chip cites">Citas: ${cites}</span>
+          ${w?.doi ? `<span class="chip">DOI</span>` : ``}
+          ${topics.slice(0,3).map(t=>`<span class="chip">${t}</span>`).join("")}
+        </div>
+        ${abs ? `
+          <details ${showAbs ? "open" : ""}>
+            <summary>Abstract</summary>
+            <div class="abs">${abs}</div>
+          </details>
+        ` : ``}
+      `;
+      list.appendChild(card);
+    }
+
+    block.appendChild(list);
+    blocks.appendChild(block);
+  }
+}
+
+function renderAll(){
+  // Para los contadores de sidebar, usamos un “prefiltro” (RS + OA + query) pero SIN aplicar journal/topic activos
+  // para que puedas ver qué hay disponible antes de hacer click.
+  const q = (el("q").value || "").trim();
+  const oaOnly = el("oaOnly").checked;
+
+  const base = state.allWorks.filter(w => {
+    if(!passesRSFilter(w)) return false;
+    if(oaOnly && !isOA(w)) return false;
+    if(q){
+      const hay = `${w?.title||""} ${stripHtml(w?.abstract||"")}`;
+      try{
+        const re = new RegExp(q, "i");
+        if(!re.test(hay)) return false;
+      }catch{
+        if(!hay.toLowerCase().includes(q.toLowerCase())) return false;
+      }
+    }
+    return true;
+  });
+
+  renderSidebarCounts(base);
+
+  const filtered = applyFilters(state.allWorks);
+  const sorted = applySort(filtered);
+
+  el("metaLeft").textContent = `Mostrando ${sorted.length} artículos (de ${state.allWorks.length} recuperados)`;
+  const days = el("days").value;
+  const parts = [
+    `Ventana: ${days} días`,
+    `Revista: ${JOURNALS.find(j=>j.key===state.activeJournal)?.name || "All"}`,
+    `Tópico: ${state.activeTopic || "All"}`
+  ];
+  el("metaRight").textContent = parts.join(" · ");
+
+  renderBlocks(sorted);
+}
+
+/* -----------------------------
+   Eventos
+------------------------------ */
+function init(){
+  ["q","sort","oaOnly","showAbs","strictRS"].forEach(id=>{
+    el(id).addEventListener("input", renderAll);
+    el(id).addEventListener("change", renderAll);
+  });
+
+  el("days").addEventListener("change", ()=>{
+    // al cambiar ventana, limpiamos filtros activos para evitar “pantalla vacía”
+    state.activeJournal = "ALL";
+    state.activeTopic = null;
+    loadData({force:false}).catch(err=>{
+      console.error(err);
+      setStatus(`Error: ${err.message}`, "err");
+    });
+  });
+
+  el("reload").addEventListener("click", ()=>{
+    state.activeJournal = "ALL";
+    state.activeTopic = null;
+    loadData({force:true}).catch(err=>{
+      console.error(err);
+      setStatus(`Error: ${err.message}`, "err");
+    });
+  });
+
+  loadData({force:false}).catch(err=>{
+    console.error(err);
+    setStatus(`Error: ${err.message}`, "err");
+  });
+}
+
+init();
+</script>
+</body>
+</html>
