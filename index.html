@@ -43,7 +43,7 @@
 
     .meta{ display:flex; justify-content:space-between; align-items:baseline; gap:10px; flex-wrap:wrap;
       margin:10px 0 14px; color:var(--muted); font-size:13px; }
-    .status{ margin:10px 0 0; color:var(--muted); font-size:12.5px; }
+    .status{ margin:10px 0 0; color:var(--muted); font-size:12.5px; white-space:pre-wrap; }
     .err{ color:#ffb4b4; }
 
     .section{ margin:14px 0 8px; font-size:14px; font-weight:800; letter-spacing:.2px; }
@@ -124,7 +124,7 @@
       <label>Acciones</label>
       <div style="display:flex; gap:8px; flex-wrap:wrap;">
         <button class="btn" id="searchBtn">Buscar</button>
-        <button class="btn" id="reload">Actualizar</button>
+        <button class="btn" id="clearBtn">Limpiar</button>
       </div>
     </div>
 
@@ -134,6 +134,7 @@
         <label class="toggle"><input type="checkbox" id="oaOnly" /> Open Access Only</label>
         <label class="toggle"><input type="checkbox" id="showAbs" /> Show Abstracts</label>
         <label class="toggle"><input type="checkbox" id="rsOnly" checked /> Solo RecSys</label>
+        <label class="toggle"><input type="checkbox" id="debug" /> Debug</label>
       </div>
     </div>
   </div>
@@ -150,8 +151,7 @@
   <div id="sections"></div>
 
   <div class="foot">
-    <div><strong>Nota técnica:</strong> OpenAlex no expone el abstract como texto directo; cuando existe viene como <code>abstract_inverted_index</code> y aquí se reconstruye.</div>
-    <div>Si recibes errores 429 (rate limit), rellena el campo <code>mailto</code> y vuelve a pulsar <strong>Buscar</strong>.</div>
+    <div><strong>Tip:</strong> si ves 0 resultados, activa <code>Debug</code> y pulsa Buscar: verás por revista cuántos artículos llegan y cuántos se filtran.</div>
   </div>
 </main>
 
@@ -172,9 +172,7 @@
     { name: "IEEE Access", issn: "2169-3536" },
   ];
 
-  // ============================
   // Topic rules (heurístico)
-  // ============================
   const TOPIC_RULES = [
     { topic: "Sequential / Session-based", rx: /(sequential|session[-\s]?based|next[-\s]?item|sasrec|bert4rec|gru4rec|transformer|attention)/i },
     { topic: "Graph / Knowledge Graph", rx: /(graph neural|gnn|lightgcn|ngcf|graph[-\s]?based|knowledge graph|kgat|ripplenet|heterogeneous|relational)/i },
@@ -190,13 +188,8 @@
 
   // Core RS filter (suave) + default search
   const CORE_RS_RX = /(recommender|recommendation|collaborative\s*filtering|content[-\s]*based|hybrid\s*recommender|implicit feedback|top[-\s]?n|ranking model)/i;
-
-  // Más recall que "recommender system"
   const DEFAULT_SEARCH = "recommender";
 
-  // ============================
-  // Helpers
-  // ============================
   const el = (id) => document.getElementById(id);
   const state = { works: [], lastUpdated: null, sourceIdCache: new Map() };
 
@@ -236,7 +229,7 @@
     return Boolean(work?.open_access?.is_oa);
   }
 
-  // ---- OpenAlex abstract: abstract_inverted_index -> text
+  // abstract_inverted_index -> text
   function invertedIndexToText(inv){
     if(!inv) return "";
     let maxPos = 0;
@@ -281,9 +274,6 @@
     return "Older";
   }
 
-  // ============================
-  // OpenAlex: resolve source id from ISSN
-  // ============================
   async function resolveSourceIdFromIssn(issn){
     if(state.sourceIdCache.has(issn)) return state.sourceIdCache.get(issn);
 
@@ -291,45 +281,50 @@
     const cached = localStorage.getItem(cacheKey);
     if(cached){
       state.sourceIdCache.set(issn, cached);
-      return cached; // Sxxxx
+      return cached;
     }
 
     const url = `https://api.openalex.org/sources/issn:${encodeURIComponent(issn)}?select=id,display_name`;
     const r = await fetch(url);
-    if(!r.ok) throw new Error(`No puedo resolver source id para ISSN ${issn} (HTTP ${r.status})`);
+    if(!r.ok) throw new Error(`ISSN lookup falló (${issn}) HTTP ${r.status}`);
     const j = await r.json();
     const id = j?.id;
-    if(!id) throw new Error(`Respuesta sin id al resolver ISSN ${issn}`);
-    const shortId = id.split("/").pop(); // "S123..."
+    if(!id) throw new Error(`ISSN lookup sin id (${issn})`);
+    const shortId = id.split("/").pop();
     localStorage.setItem(cacheKey, shortId);
     state.sourceIdCache.set(issn, shortId);
     return shortId;
   }
 
-  // ============================
-  // OpenAlex fetch by source id + date + search
-  // ============================
   async function fetchWorksForSourceId(sourceId, fromDate, toDate, perPage=200, mailto="", searchTerm=""){
     const base = "https://api.openalex.org/works";
     let cursor = "*";
     let out = [];
     let guard = 0;
 
-    while(guard < 6){
-      // Importante: en OpenAlex, el tipo dominante para artículos de revista es type=article.
-      // Añadimos además primary_location.source.type:journal para ceñirnos a revistas.
-      const url =
-        `${base}?filter=` +
-        `primary_location.source.id:${encodeURIComponent(sourceId)},` +
-        `from_publication_date:${fromDate},to_publication_date:${toDate},` +
-        `type:article,primary_location.source.type:journal` +
-        `&per-page=${perPage}` +
-        `&cursor=${encodeURIComponent(cursor)}` +
-        (searchTerm ? `&search=${encodeURIComponent(searchTerm)}` : "") +
-        (mailto ? `&mailto=${encodeURIComponent(mailto)}` : "");
+    while(guard < 8){
+      // IMPORTANTE: type=article es el tipo dominante para artículos de revista en OpenAlex
+      const filter = [
+        `primary_location.source.id:${sourceId}`,
+        `from_publication_date:${fromDate}`,
+        `to_publication_date:${toDate}`,
+        `type:article`
+      ].join(",");
+
+      const qs = new URLSearchParams();
+      qs.set("filter", filter);
+      qs.set("per-page", String(perPage));
+      qs.set("cursor", cursor);
+      if(searchTerm) qs.set("search", searchTerm);
+      if(mailto) qs.set("mailto", mailto);
+
+      const url = `${base}?${qs.toString()}`;
 
       const r = await fetch(url);
-      if(!r.ok) throw new Error(`OpenAlex error ${r.status} for source ${sourceId}`);
+      if(!r.ok){
+        const txt = await r.text().catch(()=> "");
+        throw new Error(`OpenAlex HTTP ${r.status} en works (${sourceId}). ${txt.slice(0,200)}`);
+      }
       const j = await r.json();
 
       out = out.concat(j.results || []);
@@ -342,74 +337,31 @@
     return out;
   }
 
-  // ============================
-  // Load + normalize
-  // ============================
-  async function loadData(){
-    const days = parseInt(el("days").value, 10);
-    el("daysLabel").textContent = String(days);
-
-    const to = new Date();
-    const from = new Date();
-    from.setDate(to.getDate() - days);
-    const fromDate = isoDate(from);
-    const toDate = isoDate(to);
-
-    const selectedJournal = el("journal").value;
-    const mailto = (el("mailto").value || "").trim();
-    const rsOnly = el("rsOnly").checked;
-
-    const journalsToQuery = (selectedJournal && selectedJournal !== "__ALL__")
-      ? JOURNALS.filter(j => j.issn === selectedJournal)
-      : JOURNALS.filter(j => j.issn);
-
-    const q = (el("q").value || "").trim();
-    const searchTerm = q ? q : (rsOnly ? DEFAULT_SEARCH : "");
-
-    setStatus("Cargando desde OpenAlex…");
-    el("sections").innerHTML = "";
-    el("metaLeft").textContent = "Cargando…";
-    el("metaRight").textContent = "";
-
-    const results = [];
-    const seen = new Set();
-
-    for(const j of journalsToQuery){
-      setStatus(`Consultando: ${j.name}…`);
-
-      const sourceId = await resolveSourceIdFromIssn(j.issn);
-      const works = await fetchWorksForSourceId(sourceId, fromDate, toDate, 200, mailto, searchTerm);
-
-      for(const w of works){
-        const key = (w.doi || w.id || JSON.stringify([w.title, w.publication_date]));
-        if(seen.has(key)) continue;
-        seen.add(key);
-
-        if(rsOnly){
-          const hay = getTextHaystack(w);
-          if(!CORE_RS_RX.test(hay)) continue;
-        }
-
-        w.__journal_issn = j.issn;
-        w.__journal_name = j.name;
-        w.__topics = classifyTopics(w);
-        w.__bucket = bucketLabel(w);
-
-        results.push(w);
+  function buildTopicDropdown(){
+    const sel = el("topic");
+    const counts = new Map();
+    for(const w of state.works){
+      for(const t of (w.__topics||["General RS"])){
+        counts.set(t, (counts.get(t)||0)+1);
       }
     }
+    const topics = Array.from(counts.entries()).sort((a,b)=> b[1]-a[1]);
 
-    state.works = results;
-    state.lastUpdated = new Date();
+    sel.innerHTML = "";
+    const optAll = document.createElement("option");
+    optAll.value = "__ALL__";
+    optAll.textContent = "All Topics";
+    sel.appendChild(optAll);
 
-    setStatus(`OK — ${results.length} artículos. Updated: ${state.lastUpdated.toLocaleString()}`);
-    buildTopicDropdown();
-    render();
+    for(const [t,c] of topics){
+      const opt = document.createElement("option");
+      opt.value = t;
+      opt.textContent = `${t} (${c})`;
+      sel.appendChild(opt);
+    }
+    if(!sel.value) sel.value = "__ALL__";
   }
 
-  // ============================
-  // Filters & sorting
-  // ============================
   function applyFilters(works){
     const q = (el("q").value || "").trim();
     const oaOnly = el("oaOnly").checked;
@@ -419,12 +371,9 @@
 
     return works.filter(w=>{
       if(oaOnly && !isOA(w)) return false;
-
       if(topicSel && topicSel !== "__ALL__"){
         if(!(w.__topics || []).includes(topicSel)) return false;
       }
-
-      // Importante: el filtrado por texto aquí solo refina el set ya descargado.
       if(qRx){
         const hay = getTextHaystack(w);
         if(!qRx.test(hay)) return false;
@@ -436,57 +385,18 @@
   function applySort(works){
     const mode = el("sort").value;
     const arr = works.slice();
-
     const dateVal = (w)=>{
       const d = pubDate(w);
       return d ? new Date(d).getTime() : 0;
     };
-
     if(mode==="date_desc") arr.sort((a,b)=> dateVal(b)-dateVal(a));
     if(mode==="date_asc") arr.sort((a,b)=> dateVal(a)-dateVal(b));
     if(mode==="journal_asc") arr.sort((a,b)=> (a.__journal_name||"").localeCompare((b.__journal_name||""), "es"));
     if(mode==="title_asc") arr.sort((a,b)=> (a.title||"").localeCompare((b.title||""), "es"));
     if(mode==="cites_desc") arr.sort((a,b)=> (b.cited_by_count||0)-(a.cited_by_count||0));
-
     return arr;
   }
 
-  // ============================
-  // Topic dropdown with counts
-  // ============================
-  function buildTopicDropdown(){
-    const sel = el("topic");
-    const counts = new Map();
-
-    for(const w of state.works){
-      for(const t of (w.__topics||["General RS"])){
-        counts.set(t, (counts.get(t)||0)+1);
-      }
-    }
-
-    const topics = Array.from(counts.entries())
-      .sort((a,b)=> b[1]-a[1])
-      .map(([t,c]) => ({t,c}));
-
-    sel.innerHTML = "";
-    const optAll = document.createElement("option");
-    optAll.value = "__ALL__";
-    optAll.textContent = "All Topics";
-    sel.appendChild(optAll);
-
-    for(const {t,c} of topics){
-      const opt = document.createElement("option");
-      opt.value = t;
-      opt.textContent = `${t} (${c})`;
-      sel.appendChild(opt);
-    }
-
-    if(!sel.value) sel.value = "__ALL__";
-  }
-
-  // ============================
-  // Render sections
-  // ============================
   function render(){
     const showAbs = el("showAbs").checked;
 
@@ -534,7 +444,6 @@
         const cites = w?.cited_by_count ?? 0;
         const abs = getAbstractText(w);
         const topics = (w.__topics || ["General RS"]).slice(0, 6);
-
         const topicChips = topics.map(t => `<span class="chip topic" data-topic="${t}">${t}</span>`).join("");
 
         card.innerHTML = `
@@ -574,13 +483,107 @@
         window.scrollTo({ top: 0, behavior: "smooth" });
       });
     });
+
+    if(sorted.length === 0){
+      const p = document.createElement("div");
+      p.className = "card";
+      p.textContent = "No hay artículos con los filtros actuales. Activa Debug para ver si llegan resultados desde OpenAlex y dónde se filtran.";
+      sections.appendChild(p);
+    }
   }
 
-  // ============================
-  // Init controls
-  // ============================
+  async function loadDataSafe(){
+    try{
+      await loadData();
+    }catch(err){
+      console.error(err);
+      setStatus(`ERROR: ${err?.message || err}`, true);
+    }
+  }
+
+  async function loadData(){
+    const days = parseInt(el("days").value, 10);
+    el("daysLabel").textContent = String(days);
+
+    const to = new Date();
+    const from = new Date();
+    from.setDate(to.getDate() - days);
+    const fromDate = isoDate(from);
+    const toDate = isoDate(to);
+
+    const selectedJournal = el("journal").value;
+    const mailto = (el("mailto").value || "").trim();
+    const rsOnly = el("rsOnly").checked;
+    const debug = el("debug").checked;
+
+    const journalsToQuery = (selectedJournal && selectedJournal !== "__ALL__")
+      ? JOURNALS.filter(j => j.issn === selectedJournal)
+      : JOURNALS.filter(j => j.issn);
+
+    const q = (el("q").value || "").trim();
+    const searchTerm = q ? q : DEFAULT_SEARCH; // siempre algo por defecto para evitar “ruido infinito”
+
+    setStatus("Buscando en OpenAlex…");
+    el("sections").innerHTML = "";
+    el("metaLeft").textContent = "Cargando…";
+    el("metaRight").textContent = "";
+
+    const results = [];
+    const seen = new Set();
+    const diag = [];
+
+    for(const j of journalsToQuery){
+      const sourceId = await resolveSourceIdFromIssn(j.issn);
+
+      const works = await fetchWorksForSourceId(sourceId, fromDate, toDate, 200, mailto, searchTerm);
+      const fetched = works.length;
+
+      let kept = 0;
+      let keptAfterRS = 0;
+
+      // (debug) muestra 3 títulos aunque luego se filtren
+      const sampleTitles = works.slice(0,3).map(w => w?.title).filter(Boolean);
+
+      for(const w of works){
+        const key = (w.doi || w.id || JSON.stringify([w.title, w.publication_date]));
+        if(seen.has(key)) continue;
+        seen.add(key);
+        kept++;
+
+        if(rsOnly){
+          const hay = getTextHaystack(w);
+          if(!CORE_RS_RX.test(hay)) continue;
+        }
+        keptAfterRS++;
+
+        w.__journal_issn = j.issn;
+        w.__journal_name = j.name;
+        w.__topics = classifyTopics(w);
+        w.__bucket = bucketLabel(w);
+        results.push(w);
+      }
+
+      diag.push(
+        `${j.name}\n  issn=${j.issn}  sourceId=${sourceId}\n  fetched=${fetched}  unique=${kept}  after_rs_filter=${keptAfterRS}` +
+        (debug && sampleTitles.length ? `\n  sample: ${sampleTitles.join(" | ")}` : "")
+      );
+      setStatus(diag.join("\n\n"));
+    }
+
+    state.works = results;
+    state.lastUpdated = new Date();
+
+    setStatus(
+      `OK — ${results.length} artículos (tras filtros). Updated: ${state.lastUpdated.toLocaleString()}\n\n` +
+      diag.join("\n\n")
+    );
+
+    buildTopicDropdown();
+    render();
+  }
+
   function initControls(){
-    // Journals
+    // journals
     const sel = el("journal");
     sel.innerHTML = "";
     for(const j of JOURNALS){
@@ -591,7 +594,7 @@
     }
     sel.value = "__ALL__";
 
-    // Topics placeholder
+    // topics
     const tsel = el("topic");
     tsel.innerHTML = "";
     const opt = document.createElement("option");
@@ -600,39 +603,33 @@
     tsel.appendChild(opt);
     tsel.value = "__ALL__";
 
-    // UI-only changes -> render
     ["topic","sort","oaOnly","showAbs"].forEach(id=>{
-      el(id).addEventListener("input", ()=> render());
       el(id).addEventListener("change", ()=> render());
     });
 
-    // RecSys-only toggle affects which works are accepted; re-search is safer
-    el("rsOnly").addEventListener("change", ()=> {
-      setStatus('Cambia "Solo RecSys" y pulsa "Buscar" para recargar el feed con ese criterio.');
+    el("searchBtn").addEventListener("click", ()=> loadDataSafe());
+    el("clearBtn").addEventListener("click", ()=>{
+      el("q").value = "";
+      el("topic").value = "__ALL__";
+      el("journal").value = "__ALL__";
+      el("oaOnly").checked = false;
+      el("showAbs").checked = false;
+      el("rsOnly").checked = true;
+      setStatus('Listo. Pulsa "Buscar".');
+      el("sections").innerHTML = "";
+      el("metaLeft").textContent = "Listo.";
+      el("metaRight").textContent = "";
     });
 
-    // Search button triggers OpenAlex queries
-    el("searchBtn").addEventListener("click", ()=> loadData());
-    el("reload").addEventListener("click", ()=> loadData());
-
-    // Enter in query triggers search
     el("q").addEventListener("keydown", (e)=>{
       if(e.key === "Enter"){
         e.preventDefault();
-        loadData();
+        loadDataSafe();
       }
     });
 
-    // Journal/day changes -> ask user to search (no auto queries)
-    el("journal").addEventListener("change", ()=> setStatus('Cambiado "Journal". Pulsa "Buscar" para actualizar.'));
-    el("days").addEventListener("change", ()=>{
-      el("daysLabel").textContent = el("days").value;
-      setStatus('Cambiada la ventana temporal. Pulsa "Buscar" para actualizar.');
-    });
-
-    // Initial message
     el("daysLabel").textContent = el("days").value;
-    setStatus('Listo. Escribe una búsqueda (o deja vacío) y pulsa "Buscar".');
+    setStatus('Listo. Pulsa "Buscar" (y activa Debug si sale 0).');
   }
 
   initControls();
