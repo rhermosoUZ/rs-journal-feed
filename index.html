@@ -122,7 +122,10 @@
 
     <div class="control">
       <label>Acciones</label>
-      <button class="btn" id="reload">Actualizar (OpenAlex)</button>
+      <div style="display:flex; gap:8px; flex-wrap:wrap;">
+        <button class="btn" id="searchBtn">Buscar</button>
+        <button class="btn" id="reload">Actualizar</button>
+      </div>
     </div>
 
     <div class="control">
@@ -140,18 +143,15 @@
 
 <main class="wrap">
   <div class="meta">
-    <div id="metaLeft">Cargando…</div>
+    <div id="metaLeft">Listo.</div>
     <div id="metaRight"></div>
   </div>
 
   <div id="sections"></div>
 
   <div class="foot">
-    <div><strong>Cómo funciona:</strong> se consultan works tipo <code>journal-article</code> filtrando por revista (source) y por rango de fechas. OpenAlex: filtros, búsqueda, paginación por cursor. </div>
-    <div>“Citations” viene de <code>cited_by_count</code> y “Open Access” de <code>open_access.is_oa</code> (OpenAlex). </div>
-    <div style="margin-top:6px; opacity:.9">
-      Nota: la asignación de <em>Topics</em> aquí es heurística (keywords) para replicar la UX del briefing.
-    </div>
+    <div><strong>Nota técnica:</strong> OpenAlex no expone el abstract como texto directo; cuando existe viene como <code>abstract_inverted_index</code> y aquí se reconstruye.</div>
+    <div>Si recibes errores 429 (rate limit), rellena el campo <code>mailto</code> y vuelve a pulsar <strong>Buscar</strong>.</div>
   </div>
 </main>
 
@@ -185,12 +185,14 @@
     { topic: "Privacy / Security", rx: /(privacy|private|differential privacy|federated|secure|encryption|attack|poison)/i },
     { topic: "Evaluation / Ranking", rx: /(evaluation|offline|online|a\/b|metric|ndcg|map|mrr|hit@|recall@|precision@|ranking|calibration)/i },
     { topic: "Context-Aware / Mobility", rx: /(context[-\s]?aware|spatiotemporal|location|poi|mobility|trajectory|tourism|route)/i },
-    { topic: "Cold-start / Hybrid", rx: /(cold[-\s]?start|hybrid|content[-\s]?based|feature[-\s]?based|side information)/i },
+    { topic: "Cold-start / Hybrid", rx: /(cold[-\s]?start|hybrid|content[-\s]*based|feature[-\s]*based|side information)/i },
   ];
 
   // Core RS filter (suave) + default search
   const CORE_RS_RX = /(recommender|recommendation|collaborative\s*filtering|content[-\s]*based|hybrid\s*recommender|implicit feedback|top[-\s]?n|ranking model)/i;
-  const DEFAULT_SEARCH = "recommender system";
+
+  // Más recall que "recommender system"
+  const DEFAULT_SEARCH = "recommender";
 
   // ============================
   // Helpers
@@ -314,11 +316,13 @@
     let guard = 0;
 
     while(guard < 6){
+      // Importante: en OpenAlex, el tipo dominante para artículos de revista es type=article.
+      // Añadimos además primary_location.source.type:journal para ceñirnos a revistas.
       const url =
         `${base}?filter=` +
         `primary_location.source.id:${encodeURIComponent(sourceId)},` +
         `from_publication_date:${fromDate},to_publication_date:${toDate},` +
-        `type:journal-article` +
+        `type:article,primary_location.source.type:journal` +
         `&per-page=${perPage}` +
         `&cursor=${encodeURIComponent(cursor)}` +
         (searchTerm ? `&search=${encodeURIComponent(searchTerm)}` : "") +
@@ -359,10 +363,6 @@
       ? JOURNALS.filter(j => j.issn === selectedJournal)
       : JOURNALS.filter(j => j.issn);
 
-    // Search strategy:
-    // - If user typed q => use it
-    // - else if rsOnly => default search "recommender system"
-    // - else => empty (will return a lot; not recommended)
     const q = (el("q").value || "").trim();
     const searchTerm = q ? q : (rsOnly ? DEFAULT_SEARCH : "");
 
@@ -385,7 +385,6 @@
         if(seen.has(key)) continue;
         seen.add(key);
 
-        // If rsOnly, keep a soft RS filter (now with abstract reconstructed)
         if(rsOnly){
           const hay = getTextHaystack(w);
           if(!CORE_RS_RX.test(hay)) continue;
@@ -395,6 +394,7 @@
         w.__journal_name = j.name;
         w.__topics = classifyTopics(w);
         w.__bucket = bucketLabel(w);
+
         results.push(w);
       }
     }
@@ -424,6 +424,7 @@
         if(!(w.__topics || []).includes(topicSel)) return false;
       }
 
+      // Importante: el filtrado por texto aquí solo refina el set ya descargado.
       if(qRx){
         const hay = getTextHaystack(w);
         if(!qRx.test(hay)) return false;
@@ -494,7 +495,9 @@
 
     el("metaLeft").textContent = `Showing ${sorted.length} articles`;
     const days = el("days").value;
-    const jSel = el("journal").value === "__ALL__" ? "All Journals" : (JOURNALS.find(j=>j.issn===el("journal").value)?.name || "Journal");
+    const jSel = el("journal").value === "__ALL__"
+      ? "All Journals"
+      : (JOURNALS.find(j=>j.issn===el("journal").value)?.name || "Journal");
     const tSel = el("topic").value === "__ALL__" ? "All Topics" : el("topic").value;
     el("metaRight").textContent = `${jSel} • ${tSel} • last ${days} days`;
 
@@ -529,7 +532,6 @@
         const date = pubDate(w) || "Fecha no disponible";
         const authors = authorsToString(w?.authorships);
         const cites = w?.cited_by_count ?? 0;
-        const oa = isOA(w);
         const abs = getAbstractText(w);
         const topics = (w.__topics || ["General RS"]).slice(0, 6);
 
@@ -543,7 +545,7 @@
             <span>${date}</span>
           </div>
           <div class="chips">
-            ${oa ? `<span class="chip oa">Open Access</span>` : ``}
+            ${isOA(w) ? `<span class="chip oa">Open Access</span>` : ``}
             <span class="chip cites">Citations: ${cites}</span>
             ${w?.doi ? `<span class="chip">DOI</span>` : ``}
           </div>
@@ -578,6 +580,7 @@
   // Init controls
   // ============================
   function initControls(){
+    // Journals
     const sel = el("journal");
     sel.innerHTML = "";
     for(const j of JOURNALS){
@@ -588,6 +591,7 @@
     }
     sel.value = "__ALL__";
 
+    // Topics placeholder
     const tsel = el("topic");
     tsel.innerHTML = "";
     const opt = document.createElement("option");
@@ -596,21 +600,42 @@
     tsel.appendChild(opt);
     tsel.value = "__ALL__";
 
-    ["q","topic","sort","oaOnly","showAbs","rsOnly"].forEach(id=>{
+    // UI-only changes -> render
+    ["topic","sort","oaOnly","showAbs"].forEach(id=>{
       el(id).addEventListener("input", ()=> render());
       el(id).addEventListener("change", ()=> render());
     });
 
-    el("journal").addEventListener("change", ()=> loadData());
-    el("days").addEventListener("change", ()=> loadData());
+    // RecSys-only toggle affects which works are accepted; re-search is safer
+    el("rsOnly").addEventListener("change", ()=> {
+      setStatus('Cambia "Solo RecSys" y pulsa "Buscar" para recargar el feed con ese criterio.');
+    });
+
+    // Search button triggers OpenAlex queries
+    el("searchBtn").addEventListener("click", ()=> loadData());
     el("reload").addEventListener("click", ()=> loadData());
+
+    // Enter in query triggers search
+    el("q").addEventListener("keydown", (e)=>{
+      if(e.key === "Enter"){
+        e.preventDefault();
+        loadData();
+      }
+    });
+
+    // Journal/day changes -> ask user to search (no auto queries)
+    el("journal").addEventListener("change", ()=> setStatus('Cambiado "Journal". Pulsa "Buscar" para actualizar.'));
+    el("days").addEventListener("change", ()=>{
+      el("daysLabel").textContent = el("days").value;
+      setStatus('Cambiada la ventana temporal. Pulsa "Buscar" para actualizar.');
+    });
+
+    // Initial message
+    el("daysLabel").textContent = el("days").value;
+    setStatus('Listo. Escribe una búsqueda (o deja vacío) y pulsa "Buscar".');
   }
 
   initControls();
-  loadData().catch(err=>{
-    console.error(err);
-    setStatus(`Error: ${err.message}`, true);
-  });
 </script>
 </body>
 </html>
